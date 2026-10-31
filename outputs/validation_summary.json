@@ -1,0 +1,40 @@
+{
+    "project": "Order-to-Cash Revenue Leakage Monitoring",
+    "overall_status": "PASSED",
+    "data_quality_checks": {
+        "shipped_quantity": {
+            "violations": 0,
+            "status": "PASSED",
+            "examples": []
+        },
+        "invoiced_quantity": {
+            "violations": 0,
+            "status": "PASSED",
+            "examples": []
+        },
+        "payment_allocations": {
+            "violations": 0,
+            "status": "PASSED",
+            "examples": []
+        },
+        "foreign_keys": {
+            "violations": 0,
+            "status": "PASSED",
+            "examples": []
+        }
+    },
+    "financial_summary": {
+        "invoices_considered": 8000,
+        "invoices_with_outstanding_balance": 8000,
+        "overpaid_invoices": 0,
+        "total_outstanding_paise": 53395625164.0,
+        "total_outstanding_inr": 533956251.64,
+        "active_disputed_amount_paise": 2572854827.0,
+        "active_disputed_amount_inr": 25728548.27,
+        "dispute_amount_applied_paise": 1197229260.0,
+        "dispute_amount_applied_inr": 11972292.6,
+        "adjusted_receivables_paise": 52198395904.0,
+        "adjusted_receivables_inr": 521983959.04,
+        "status": "PASSED"
+    }
+}
