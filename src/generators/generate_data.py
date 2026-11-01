@@ -1,6 +1,6 @@
-
 import random
 import sqlite3
+import os
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -122,8 +122,9 @@ def generate_quotes(connection):
         account_id = random.choice(accounts)
 
         quote_date = fake.date_between(
-            start_date=date(2025, 1, 1),
-            end_date=date(2026, 9, 1)
+            start_date=date(2026, 8, 1),
+            end_date=date(2026, 10, 20)
+
         )
 
         expiry_date = quote_date + timedelta(days=30)
@@ -372,9 +373,9 @@ def generate_invoices(connection):
             ON ol.order_id = so.order_id
         WHERE sh.status = 'DELIVERED'
         ORDER BY sh.delivery_date, sl.shipment_line_id
-        LIMIT 8000
     """).fetchall()
-
+    random.shuffle(delivered_lines)
+    delivered_lines = delivered_lines[:8000]
     for i, row in enumerate(delivered_lines, start=1):
         (
             shipment_line_id,
@@ -549,6 +550,7 @@ def generate_disputes(connection):
         selected_invoices, start=1
     ):
         total_amount = int(total_amount)
+        dispute_id = f"DSP-2026-{i:06d}"
 
         opened_date = (
             date.fromisoformat(invoice_date)
@@ -563,9 +565,7 @@ def generate_disputes(connection):
                 opened_date + timedelta(days=random.randint(1, 15))
             ).isoformat()
 
-        disputed_amount = random.randint(
-            1, total_amount
-        )
+        disputed_amount = random.randint(1, total_amount)
 
         cursor.execute("""
             INSERT INTO Dispute (
@@ -574,7 +574,7 @@ def generate_disputes(connection):
             )
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
-            f"DSP-2026-{i:06d}",
+            dispute_id,
             invoice_id,
             opened_date.isoformat(),
             resolved_date,
@@ -583,9 +583,42 @@ def generate_disputes(connection):
             disputed_amount
         ))
 
+        if status in ("OPEN", "UNDER_REVIEW"):
+            total_paid = cursor.execute("""
+                SELECT COALESCE(SUM(allocated_amount), 0)
+                FROM PaymentAllocation
+                WHERE invoice_id = ?
+            """, (invoice_id,)).fetchone()[0]
+
+            outstanding = max(0, total_amount - total_paid)
+            adjustment_amount = min(disputed_amount, outstanding)
+
+            if adjustment_amount > 0:
+                cursor.execute("""
+                    INSERT INTO DisputeAdjustment (
+                        adjustment_id,
+                        dispute_id,
+                        adjusted_amount,
+                        adjustment_date,
+                        status
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    f"DPA-2026-{i:06d}",
+                    dispute_id,
+                    adjustment_amount,
+                    opened_date.isoformat(),
+                    "POSTED"
+                ))
+
     connection.commit()
     print("Disputes generated:", len(selected_invoices))
 
+    adjustment_count = cursor.execute("""
+        SELECT COUNT(*) FROM DisputeAdjustment
+    """).fetchone()[0]
+
+    print("Dispute adjustments generated:", adjustment_count)
 
 def generate_status_events(connection):
     cursor = connection.cursor()
@@ -681,10 +714,29 @@ def generate_status_events(connection):
 # Main execution
 # --------------------------------------------------
 def main():
+    from src.database.init_db import reset_and_initialize_database
+
+    reset_and_initialize_database()
+
     connection = get_connection()
 
     try:
+        generate_accounts(connection)
+        generate_quotes(connection)
+        generate_sales_orders(connection)
+        generate_shipments(connection)
+        generate_invoices(connection)
+        generate_payments(connection)
+        generate_disputes(connection)
         generate_status_events(connection)
+
+        print("\nBaseline data generation completed successfully!")
+
+    except Exception as error:
+        connection.rollback()
+        print("Data generation failed:", error)
+        raise
+
     finally:
         connection.close()
 

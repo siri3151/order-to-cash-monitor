@@ -90,11 +90,14 @@ def calculate_dispute_adjusted_receivables(connection):
 
         LEFT JOIN (
             SELECT
-                invoice_id,
-                SUM(disputed_amount) AS active_disputed_amount
-            FROM Dispute
-            WHERE status IN ('OPEN', 'UNDER_REVIEW')
-            GROUP BY invoice_id
+               d.invoice_id,
+               SUM(da.adjusted_amount) AS active_disputed_amount
+            FROM Dispute d
+            JOIN DisputeAdjustment da
+                 ON d.dispute_id = da.dispute_id
+            WHERE d.status IN ('OPEN', 'UNDER_REVIEW')
+              AND da.status = 'POSTED'
+            GROUP BY d.invoice_id
         ) disputes
             ON i.invoice_id = disputes.invoice_id
 
@@ -103,6 +106,60 @@ def calculate_dispute_adjusted_receivables(connection):
 
     return connection.execute(query).fetchall()
 
+def detect_unadjusted_disputes(connection):
+
+    query = """
+        SELECT
+            d.dispute_id,
+            d.invoice_id,
+            d.disputed_amount,
+            MAX(
+                0,
+                i.total_amount - COALESCE(p.total_paid, 0)
+            ) AS outstanding,
+            COALESCE(a.posted_amount, 0) AS posted_amount
+        FROM Dispute d
+        JOIN Invoice i
+            ON d.invoice_id = i.invoice_id
+
+        LEFT JOIN (
+            SELECT
+                invoice_id,
+                SUM(allocated_amount) AS total_paid
+            FROM PaymentAllocation
+            GROUP BY invoice_id
+        ) p ON i.invoice_id = p.invoice_id
+
+        LEFT JOIN (
+            SELECT
+                dispute_id,
+                SUM(adjusted_amount) AS posted_amount
+            FROM DisputeAdjustment
+            WHERE status = 'POSTED'
+            GROUP BY dispute_id
+        ) a ON d.dispute_id = a.dispute_id
+
+        WHERE d.status IN ('OPEN', 'UNDER_REVIEW')
+          AND i.status NOT IN ('DRAFT', 'VOID')
+    """
+
+    results = connection.execute(query).fetchall()
+    unadjusted = []
+
+    for row in results:
+        dispute_id, invoice_id, disputed_amount, outstanding, posted_amount = row
+
+        expected_adjustment = min(disputed_amount, outstanding)
+
+        if posted_amount < expected_adjustment:
+            unadjusted.append({
+                "dispute_id": dispute_id,
+                "invoice_id": invoice_id,
+                "expected_adjustment_paise": expected_adjustment,
+                "posted_adjustment_paise": posted_amount
+            })
+
+    return unadjusted
 
 def main():
     connection = get_connection()

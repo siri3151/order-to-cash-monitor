@@ -179,6 +179,19 @@ CREATE TABLE IF NOT EXISTS Dispute (
     )
 );
 
+CREATE TABLE IF NOT EXISTS DisputeAdjustment (
+    adjustment_id TEXT PRIMARY KEY,
+    dispute_id TEXT NOT NULL UNIQUE,
+    adjusted_amount INTEGER NOT NULL CHECK (adjusted_amount > 0),
+    adjustment_date TEXT NOT NULL,
+
+    status TEXT NOT NULL
+        CHECK (status IN ('POSTED', 'PENDING', 'REVERSED')),
+
+    FOREIGN KEY (dispute_id)
+        REFERENCES Dispute(dispute_id)
+);
+
 -- 11. STATUS EVENT
 CREATE TABLE IF NOT EXISTS StatusEvent (
     event_id TEXT PRIMARY KEY,

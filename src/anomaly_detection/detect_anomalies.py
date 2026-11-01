@@ -108,6 +108,139 @@ def detect_old_disputes(connection):
 
     return connection.execute(query).fetchall()
 
+def detect_overbilling(connection):
+    query = """
+        WITH delivered AS (
+            SELECT
+                sl.order_line_id,
+                SUM(sl.shipped_quantity) AS fulfilled_quantity
+            FROM ShipmentLine sl
+            JOIN Shipment s
+                ON sl.shipment_id = s.shipment_id
+            WHERE s.status = 'DELIVERED'
+            GROUP BY sl.order_line_id
+        ),
+        invoiced AS (
+            SELECT
+                il.order_line_id,
+                SUM(il.invoiced_quantity) AS invoiced_quantity
+            FROM InvoiceLine il
+            JOIN Invoice i
+                ON il.invoice_id = i.invoice_id
+            WHERE i.status NOT IN ('DRAFT', 'VOID')
+            GROUP BY il.order_line_id
+        )
+        SELECT
+            i.order_line_id,
+            ol.order_id,
+            d.fulfilled_quantity,
+            i.invoiced_quantity,
+            i.invoiced_quantity - d.fulfilled_quantity
+                AS excess_quantity
+        FROM invoiced i
+        JOIN delivered d
+            ON i.order_line_id = d.order_line_id
+        JOIN OrderLine ol
+            ON i.order_line_id = ol.order_line_id
+        WHERE i.invoiced_quantity > d.fulfilled_quantity
+    """
+
+    return connection.execute(query).fetchall()
+
+def detect_duplicate_payment_allocations(connection):
+    query = """
+        SELECT
+            payment_id,
+            invoice_id,
+            allocated_amount,
+            allocation_date,
+            COUNT(*) AS occurrence_count
+        FROM PaymentAllocation
+        GROUP BY
+            payment_id,
+            invoice_id,
+            allocated_amount,
+            allocation_date
+        HAVING COUNT(*) > 1
+    """
+
+    return connection.execute(query).fetchall()
+
+def detect_closed_orders_with_unpaid_invoices(connection):
+    query = """
+        SELECT
+            so.order_id,
+            i.invoice_id,
+            i.total_amount,
+            COALESCE(SUM(pa.allocated_amount), 0) AS total_paid,
+            i.total_amount - COALESCE(SUM(pa.allocated_amount), 0)
+                AS outstanding_amount
+        FROM SalesOrder so
+        JOIN Invoice i
+            ON so.order_id = i.order_id
+        LEFT JOIN PaymentAllocation pa
+            ON i.invoice_id = pa.invoice_id
+        WHERE so.status = 'CLOSED'
+          AND i.status NOT IN ('DRAFT', 'VOID')
+        GROUP BY so.order_id, i.invoice_id
+        HAVING outstanding_amount > 0
+    """
+
+    return connection.execute(query).fetchall()
+
+def detect_invalid_status_transitions(connection):
+    query = """
+        SELECT
+            event_id,
+            entity_type,
+            order_id,
+            old_status,
+            new_status,
+            event_timestamp
+        FROM StatusEvent
+        WHERE entity_type = 'SALES_ORDER'
+          AND old_status = 'CONFIRMED'
+          AND new_status = 'FULFILLED'
+    """
+
+    return connection.execute(query).fetchall()
+
+def detect_unadjusted_disputes(connection):
+    query = """
+        SELECT
+            d.dispute_id,
+            d.invoice_id,
+            d.disputed_amount,
+            COALESCE(da.posted_amount, 0) AS posted_amount
+        FROM Dispute d
+        LEFT JOIN (
+            SELECT
+                dispute_id,
+                SUM(adjusted_amount) AS posted_amount
+            FROM DisputeAdjustment
+            WHERE status = 'POSTED'
+            GROUP BY dispute_id
+        ) da
+            ON d.dispute_id = da.dispute_id
+        WHERE d.status IN ('OPEN', 'UNDER_REVIEW')
+    """
+
+    results = connection.execute(query).fetchall()
+
+    unadjusted = []
+
+    for row in results:
+        dispute_id, invoice_id, disputed_amount, posted_amount = row
+
+        if posted_amount == 0:
+            unadjusted.append({
+                "dispute_id": dispute_id,
+                "invoice_id": invoice_id,
+                "disputed_amount_paise": disputed_amount,
+                "posted_adjustment_paise": posted_amount
+            })
+
+    return unadjusted 
 
 def main():
     connection = get_connection()
@@ -172,7 +305,31 @@ def main():
                 f"Status: {status} | "
                 f"Days open: {days_open}"
             )
-            # 4. Save anomaly results to JSON
+                # 4. Detect the five required anomalies
+
+        overbilling = detect_overbilling(connection)
+
+        duplicate_allocations = (
+            detect_duplicate_payment_allocations(connection)
+        )
+
+        closed_unpaid = (
+            detect_closed_orders_with_unpaid_invoices(connection)
+        )
+
+        invalid_transitions = (
+            detect_invalid_status_transitions(connection)
+        )
+
+        unadjusted_disputes = detect_unadjusted_disputes(connection)
+
+        print("\n4. REQUIRED ANOMALY DETECTION")
+        print("Invoice overbilling:", len(overbilling))
+        print("Duplicate payment allocations:", len(duplicate_allocations))
+        print("Closed orders with unpaid invoices:", len(closed_unpaid))
+        print("Invalid status transitions:", len(invalid_transitions))
+        print("Disputes missing adjustments:", len(unadjusted_disputes))
+           # 4. Save anomaly results to JSON
 
         report = {
             "generated_at": datetime.now().isoformat(),
@@ -185,7 +342,12 @@ def main():
                 ),
                 "old_disputes": len(old_disputes),
                 "open_disputes": open_count,
-                "under_review_disputes": review_count
+                "under_review_disputes": review_count,
+                "overbilling_cases": len(overbilling),
+                "duplicate_payment_allocations": len(duplicate_allocations),
+                "closed_orders_with_unpaid_invoices": len(closed_unpaid),
+                "invalid_status_transitions": len(invalid_transitions),
+                "disputes_missing_adjustments": len(unadjusted_disputes)
             },
             "overdue_invoice_details": [
                 {
@@ -219,7 +381,67 @@ def main():
                     "days_open": row[5]
                 }
                 for row in old_disputes
+            ],
+             "overbilling_details":
+            [
+                {
+                   "order_line_id": row[0],
+                   "order_id": row[1],
+                   "fulfilled_quantity": row[2],
+                   "invoiced_quantity": row[3],
+                   "excess_quantity": row[4]
+                }
+                for row in overbilling
+            ],
+             "duplicate_payment_details": [
+                {
+                   "payment_id": row[0],
+                   "invoice_id": row[1],
+                   "allocated_amount_inr": round(row[2] / 100, 2),
+                   "allocation_date": row[3],
+                   "occurrences": row[4]
+                }
+                for row in duplicate_allocations
+            ],
+
+             "closed_unpaid_invoice_details": [
+                {
+                    "order_id": row[0],
+                    "invoice_id": row[1],
+                    "invoice_amount_inr": round(row[2] / 100, 2),
+                    "paid_amount_inr": round(row[3] / 100, 2),
+                    "outstanding_amount_inr": round(row[4] / 100, 2)
+                }
+                for row in closed_unpaid
+            ],
+
+             "invalid_transition_details": [
+               {
+                   "event_id": row[0],
+                   "entity_type": row[1],
+                   "order_id": row[2],
+                   "old_status": row[3],
+                   "new_status": row[4],
+                   "event_timestamp": row[5]
+               }
+               for row in invalid_transitions
+            ],
+
+             "unadjusted_dispute_details": [
+              {
+                **row,
+                "disputed_amount_inr": round(
+                row["disputed_amount_paise"] / 100, 2
+                ),
+                "posted_adjustment_inr": round(
+                row["posted_adjustment_paise"] / 100, 2
+                )
+              }
+               for row in unadjusted_disputes
             ]
+
+
+
         }
 
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

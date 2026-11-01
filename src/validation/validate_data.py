@@ -88,6 +88,26 @@ def check_payment_allocations(connection):
 
     return connection.execute(query).fetchall()
 
+def check_duplicate_allocations(connection):
+    """Detect duplicate payment allocations."""
+
+    query = """
+        SELECT
+            payment_id,
+            invoice_id,
+            allocated_amount,
+            allocation_date,
+            COUNT(*) AS occurrence_count
+        FROM PaymentAllocation
+        GROUP BY
+            payment_id,
+            invoice_id,
+            allocated_amount,
+            allocation_date
+        HAVING COUNT(*) > 1
+    """
+
+    return connection.execute(query).fetchall()
 
 def check_foreign_keys(connection):
     """Check database foreign-key integrity."""

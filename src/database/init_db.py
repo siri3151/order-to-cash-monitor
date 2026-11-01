@@ -38,6 +38,34 @@ def initialize_database():
 
     finally:
         connection.close()
+def reset_database():
+    if not DB_PATH.exists():
+        print("Database does not exist. Nothing to reset.")
+        return
+
+    connection = sqlite3.connect(DB_PATH)
+
+    try:
+        connection.execute("PRAGMA foreign_keys = OFF")
+
+        tables = connection.execute("""
+            SELECT name FROM sqlite_master
+            WHERE type = 'table'
+            AND name NOT LIKE 'sqlite_%'
+        """).fetchall()
+
+        for (table_name,) in tables:
+            connection.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+
+        connection.commit()
+        print("Database tables reset successfully!")
+
+    finally:
+        connection.close()
+
+def reset_and_initialize_database():
+    reset_database()
+    initialize_database()
 
 def check_shipments():
     connection = sqlite3.connect(DB_PATH)
@@ -64,7 +92,7 @@ def check_shipments():
 
 
 if __name__ == "__main__":
-    check_shipments()
+    initialize_database()
 
 
     

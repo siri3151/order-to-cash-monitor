@@ -1,6 +1,6 @@
 {
     "project": "Order-to-Cash Revenue Leakage Monitoring",
-    "overall_status": "PASSED",
+    "overall_status": "FAILED",
     "data_quality_checks": {
         "shipped_quantity": {
             "violations": 0,
@@ -8,33 +8,70 @@
             "examples": []
         },
         "invoiced_quantity": {
-            "violations": 0,
-            "status": "PASSED",
-            "examples": []
+            "violations": 1,
+            "status": "FAILED",
+            "examples": [
+                [
+                    "OL-001335-01",
+                    2,
+                    3
+                ]
+            ]
         },
         "payment_allocations": {
-            "violations": 0,
-            "status": "PASSED",
-            "examples": []
+            "violations": 1,
+            "status": "FAILED",
+            "examples": [
+                [
+                    "PAY-2026-000001",
+                    1657553,
+                    3315106
+                ]
+            ]
         },
         "foreign_keys": {
             "violations": 0,
             "status": "PASSED",
             "examples": []
+        },
+        "unadjusted_disputes": {
+            "violations": 1,
+            "status": "FAILED",
+            "examples": [
+                [
+                    "dispute_id",
+                    "invoice_id",
+                    "expected_adjustment_paise",
+                    "posted_adjustment_paise"
+                ]
+            ]
+        },
+        "duplicate_allocations": {
+            "violations": 1,
+            "status": "FAILED",
+            "examples": [
+                [
+                    "PAY-2026-000001",
+                    "INV-2026-000001",
+                    1657553,
+                    "2026-10-04",
+                    2
+                ]
+            ]
         }
     },
     "financial_summary": {
         "invoices_considered": 8000,
         "invoices_with_outstanding_balance": 8000,
         "overpaid_invoices": 0,
-        "total_outstanding_paise": 53395625164.0,
-        "total_outstanding_inr": 533956251.64,
-        "active_disputed_amount_paise": 2572854827.0,
-        "active_disputed_amount_inr": 25728548.27,
-        "dispute_amount_applied_paise": 1197229260.0,
-        "dispute_amount_applied_inr": 11972292.6,
-        "adjusted_receivables_paise": 52198395904.0,
-        "adjusted_receivables_inr": 521983959.04,
+        "total_outstanding_paise": 54207406167.0,
+        "total_outstanding_inr": 542074061.67,
+        "active_disputed_amount_paise": 1265484277.0,
+        "active_disputed_amount_inr": 12654842.77,
+        "dispute_amount_applied_paise": 1265484277.0,
+        "dispute_amount_applied_inr": 12654842.77,
+        "adjusted_receivables_paise": 52941921890.0,
+        "adjusted_receivables_inr": 529419218.9,
         "status": "PASSED"
     }
 }

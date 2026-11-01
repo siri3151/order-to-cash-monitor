@@ -8,15 +8,15 @@ from .validate_data import (
     check_invoiced_quantity,
     check_payment_allocations,
     check_foreign_keys,
+    check_duplicate_allocations,
 )
 
 from .financial_validation import (
     calculate_outstanding_balances,
     check_invoice_overpayments,
     calculate_dispute_adjusted_receivables,
+    detect_unadjusted_disputes,
 )
-
-
 BASE_DIR = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = BASE_DIR / "outputs"
 REPORT_PATH = OUTPUT_DIR / "validation_summary.json"
@@ -26,11 +26,13 @@ def run_validations(connection):
 
     # 1. Data quality checks
     checks = {
-        "shipped_quantity": check_shipped_quantity(connection),
-        "invoiced_quantity": check_invoiced_quantity(connection),
-        "payment_allocations": check_payment_allocations(connection),
-        "foreign_keys": check_foreign_keys(connection),
-    }
+    "shipped_quantity": check_shipped_quantity(connection),
+    "invoiced_quantity": check_invoiced_quantity(connection),
+    "payment_allocations": check_payment_allocations(connection),
+    "foreign_keys": check_foreign_keys(connection),
+    "unadjusted_disputes": detect_unadjusted_disputes(connection),
+    "duplicate_allocations": check_duplicate_allocations(connection),
+    }       
 
     data_quality = {}
 

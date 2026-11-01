@@ -1,0 +1,43 @@
+[
+    {
+        "anomaly_id": "ANOM-001",
+        "issue_type": "INVOICE_EXCEEDS_FULFILLED_QUANTITY",
+        "affected_record_id": "INV-2026-000001",
+        "order_line_id": "OL-001335-01",
+        "expected_fulfilled_quantity": 2,
+        "actual_invoiced_quantity": 3,
+        "description": "Invoice quantity exceeds delivered quantity."
+    },
+    {
+        "anomaly_id": "ANOM-002",
+        "issue_type": "PAYMENT_ALLOCATED_TWICE",
+        "affected_record_id": "PAY-2026-000001",
+        "invoice_id": "INV-2026-000001",
+        "duplicated_amount_paise": 1657553,
+        "description": "The same payment allocation was recorded twice."
+    },
+    {
+        "anomaly_id": "ANOM-003",
+        "issue_type": "CLOSED_ORDER_WITH_UNPAID_INVOICE",
+        "affected_record_id": "SO-2026-001335",
+        "invoice_id": "INV-2026-000001",
+        "invoice_amount_paise": 4657200,
+        "paid_amount_paise": 3573201,
+        "outstanding_amount_paise": 1083999,
+        "description": "Order closed while its invoice has an unpaid balance."
+    },
+    {
+        "anomaly_id": "ANOM-004",
+        "issue_type": "INVALID_STATUS_TRANSITION",
+        "sales_order_id": "SO-2026-000001",
+        "description": "Order moved directly from CONFIRMED to FULFILLED, skipping the intermediate fulfillment state."
+    },
+    {
+        "anomaly_id": "ANOM-005",
+        "issue_type": "DISPUTE_NOT_REFLECTED_IN_RECEIVABLES",
+        "affected_record_id": "DSP-2026-000002",
+        "invoice_id": "INV-2026-004198",
+        "disputed_amount_paise": 2608644,
+        "description": "An active dispute has no posted receivables adjustment."
+    }
+]
